@@ -1,0 +1,104 @@
+"""
+Endpoint transaksi. Menggantikan: input_transaksi, cetak_invoice, lihat_transaksi,
+edit_transaksi, hapus_transaksi, lihat_total_transaksi dari main.py CLI.
+
+Semua operasi tulis (buat/edit/batal) tetap lewat RPC di database (buat_transaksi,
+edit_transaksi_items, batalkan_transaksi) supaya atomik — logika bisnisnya
+sengaja TIDAK dipindah ke Python, cukup dipanggil dari sini.
+"""
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Depends
+from supabase import Client
+
+from app.database import get_db
+from app.schemas.transaction import TransaksiCreate, TransaksiEdit, RingkasanAdmin
+
+router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+
+@router.post("", status_code=201)
+def buat_transaksi(payload: TransaksiCreate, db: Client = Depends(get_db)):
+    try:
+        res = db.rpc("buat_transaksi", {
+            "p_customer_id": payload.customer_id,
+            "p_admin_id": payload.admin_id,
+            "p_items": [item.model_dump() for item in payload.items],
+        }).execute()
+        transaction_id = res.data[0]["out_transaction_id"]
+        return get_invoice(transaction_id, db)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Transaksi GAGAL: {e}")
+
+
+@router.get("")
+def lihat_transaksi(customer_id: Optional[str] = None, db: Client = Depends(get_db)):
+    """Semua transaksi (admin), atau hanya milik satu pembeli via ?customer_id=."""
+    query = db.table("transactions").select("*, customers(nama, no_hp)") \
+        .order("tanggal_transaksi", desc=True)
+    if customer_id:
+        query = query.eq("customer_id", customer_id)
+    return query.execute().data
+
+
+@router.get("/summary/admin", response_model=RingkasanAdmin)
+def lihat_total_transaksi(db: Client = Depends(get_db)):
+    res = db.rpc("ringkasan_admin", {}).execute()
+    data = res.data[0] if res.data else {}
+    return {
+        "total_transaksi": data.get("total_transaksi", 0),
+        "total_omzet": data.get("total_omzet", 0),
+        "jumlah_pembeli": data.get("jumlah_pembeli", 0),
+    }
+
+
+@router.get("/by-invoice/{no_invoice}")
+def get_by_no_invoice(no_invoice: str, db: Client = Depends(get_db)):
+    res = db.table("transactions").select("*").eq("no_invoice", no_invoice).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Transaksi tidak ditemukan")
+    return res.data[0]
+
+
+@router.patch("/by-invoice/{no_invoice}")
+def edit_transaksi(no_invoice: str, payload: TransaksiEdit, db: Client = Depends(get_db)):
+    """Item transaksi lama DIGANTI seluruhnya dengan daftar baru (sesuai logika CLI)."""
+    trx = db.table("transactions").select("*").eq("no_invoice", no_invoice).execute().data
+    if not trx:
+        raise HTTPException(status_code=404, detail="Transaksi tidak ditemukan")
+    trx = trx[0]
+    if trx["status"] == "dibatalkan":
+        raise HTTPException(status_code=409, detail="Transaksi sudah dibatalkan, tidak bisa diedit")
+
+    try:
+        res = db.rpc("edit_transaksi_items", {
+            "p_transaction_id": trx["transaction_id"],
+            "p_items": [item.model_dump() for item in payload.items],
+        }).execute()
+        return {"total_baru": res.data, "invoice": get_invoice(trx["transaction_id"], db)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Gagal mengedit transaksi: {e}")
+
+
+@router.post("/by-invoice/{no_invoice}/cancel")
+def hapus_transaksi(no_invoice: str, db: Client = Depends(get_db)):
+    """Transaksi tidak dihapus permanen, hanya ditandai 'dibatalkan' + stok dikembalikan."""
+    trx = db.table("transactions").select("*").eq("no_invoice", no_invoice).execute().data
+    if not trx:
+        raise HTTPException(status_code=404, detail="Transaksi tidak ditemukan")
+
+    try:
+        db.rpc("batalkan_transaksi", {"p_transaction_id": trx[0]["transaction_id"]}).execute()
+        return {"message": "Transaksi berhasil dibatalkan, stok telah dikembalikan"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Gagal membatalkan transaksi: {e}")
+
+
+@router.get("/{transaction_id}/invoice")
+def get_invoice(transaction_id: str, db: Client = Depends(get_db)):
+    trx = db.table("transactions").select("*, customers(nama, no_hp)") \
+        .eq("transaction_id", transaction_id).single().execute().data
+    if not trx:
+        raise HTTPException(status_code=404, detail="Transaksi tidak ditemukan")
+    items = db.table("transaction_items").select("*") \
+        .eq("transaction_id", transaction_id).execute().data
+    return {"transaksi": trx, "items": items}
