@@ -3,11 +3,11 @@ import { createContext, useContext, useEffect, useState } from "react";
 const SessionContext = createContext(null);
 
 // Session disimpan di localStorage supaya tidak hilang saat refresh halaman.
-// role: "admin" | "customer" | null
+// role: "admin" | "manager" | "staff" | "customer" | null
 export function SessionProvider({ children }) {
   const [role, setRole] = useState(() => localStorage.getItem("tps_role") || null);
   const [admin, setAdmin] = useState(() => {
-    const raw = localStorage.getItem("tps_admin");
+    const raw = localStorage.getItem("tps_personnel") || localStorage.getItem("tps_admin");
     return raw ? JSON.parse(raw) : null;
   });
   const [customer, setCustomer] = useState(() => {
@@ -21,8 +21,15 @@ export function SessionProvider({ children }) {
   }, [role]);
 
   useEffect(() => {
-    if (admin) localStorage.setItem("tps_admin", JSON.stringify(admin));
-    else localStorage.removeItem("tps_admin");
+    if (admin) {
+      localStorage.setItem("tps_personnel", JSON.stringify(admin));
+      if (admin.access_token) localStorage.setItem("tps_access_token", admin.access_token);
+    }
+    else {
+      localStorage.removeItem("tps_personnel");
+      localStorage.removeItem("tps_admin");
+      localStorage.removeItem("tps_access_token");
+    }
   }, [admin]);
 
   useEffect(() => {
@@ -30,9 +37,14 @@ export function SessionProvider({ children }) {
     else localStorage.removeItem("tps_customer");
   }, [customer]);
 
+  function loginAsPersonnel(personnelData) {
+    setAdmin(personnelData);
+    setCustomer(null);
+    setRole(personnelData.personnel_type);
+  }
+
   function loginAsAdmin(adminData) {
-    setAdmin(adminData);
-    setRole("admin");
+    loginAsPersonnel(adminData);
   }
 
   function loginAsCustomer(customerData) {
@@ -48,7 +60,7 @@ export function SessionProvider({ children }) {
 
   return (
     <SessionContext.Provider
-      value={{ role, admin, customer, loginAsAdmin, loginAsCustomer, logout }}
+      value={{ role, admin, personnel: admin, customer, loginAsAdmin, loginAsPersonnel, loginAsCustomer, logout }}
     >
       {children}
     </SessionContext.Provider>

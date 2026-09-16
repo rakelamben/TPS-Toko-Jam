@@ -7,21 +7,43 @@ edit_transaksi_items, batalkan_transaksi) supaya atomik — logika bisnisnya
 sengaja TIDAK dipindah ke Python, cukup dipanggil dari sini.
 """
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
 from supabase import Client
 
 from app.database import get_db
 from app.schemas.transaction import TransaksiCreate, TransaksiEdit, RingkasanAdmin
+from app.utils.auth import (
+    get_optional_personnel,
+    require_roles,
+    require_tps_operator,
+    require_tps_viewer,
+)
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
 @router.post("", status_code=201)
-def buat_transaksi(payload: TransaksiCreate, db: Client = Depends(get_db)):
+def buat_transaksi(
+    payload: TransaksiCreate,
+    db: Client = Depends(get_db),
+    personnel: dict | None = Depends(get_optional_personnel),
+):
+    if payload.personnel_id:
+        if personnel is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login personel TPS diperlukan")
+        is_admin = personnel.get("personnel_type") == "admin"
+        is_operational_staff = (
+            personnel.get("personnel_type") == "staff"
+            and personnel.get("role") == "staf_operasional"
+        )
+        if not (is_admin or is_operational_staff):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Role tidak dapat membuat transaksi")
+        if payload.personnel_id != personnel.get("sub"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Personel transaksi tidak sesuai token")
     try:
         res = db.rpc("buat_transaksi", {
             "p_customer_id": payload.customer_id,
-            "p_admin_id": payload.admin_id,
+            "p_personnel_id": payload.personnel_id,
             "p_items": [item.model_dump() for item in payload.items],
         }).execute()
         transaction_id = res.data[0]["out_transaction_id"]
@@ -31,8 +53,23 @@ def buat_transaksi(payload: TransaksiCreate, db: Client = Depends(get_db)):
 
 
 @router.get("")
-def lihat_transaksi(customer_id: Optional[str] = None, db: Client = Depends(get_db)):
+def lihat_transaksi(
+    customer_id: Optional[str] = None,
+    db: Client = Depends(get_db),
+    personnel: dict | None = Depends(get_optional_personnel),
+):
     """Semua transaksi (admin), atau hanya milik satu pembeli via ?customer_id=."""
+    if personnel is None:
+        if not customer_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login diperlukan")
+    else:
+        is_tps_viewer = personnel.get("personnel_type") in ("admin", "manager")
+        is_operational_staff = (
+            personnel.get("personnel_type") == "staff"
+            and personnel.get("role") == "staf_operasional"
+        )
+        if not (is_tps_viewer or is_operational_staff):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Role tidak dapat melihat transaksi")
     query = db.table("transactions").select("*, customers(nama, no_hp)") \
         .order("tanggal_transaksi", desc=True)
     if customer_id:
@@ -41,7 +78,10 @@ def lihat_transaksi(customer_id: Optional[str] = None, db: Client = Depends(get_
 
 
 @router.get("/summary/admin", response_model=RingkasanAdmin)
-def lihat_total_transaksi(db: Client = Depends(get_db)):
+def lihat_total_transaksi(
+    db: Client = Depends(get_db),
+    _: dict = Depends(require_tps_viewer),
+):
     res = db.rpc("ringkasan_admin", {}).execute()
     data = res.data[0] if res.data else {}
     return {
@@ -60,7 +100,12 @@ def get_by_no_invoice(no_invoice: str, db: Client = Depends(get_db)):
 
 
 @router.patch("/by-invoice/{no_invoice}")
-def edit_transaksi(no_invoice: str, payload: TransaksiEdit, db: Client = Depends(get_db)):
+def edit_transaksi(
+    no_invoice: str,
+    payload: TransaksiEdit,
+    db: Client = Depends(get_db),
+    _: dict = Depends(require_roles("admin")),
+):
     """Item transaksi lama DIGANTI seluruhnya dengan daftar baru (sesuai logika CLI)."""
     trx = db.table("transactions").select("*").eq("no_invoice", no_invoice).execute().data
     if not trx:
@@ -80,7 +125,11 @@ def edit_transaksi(no_invoice: str, payload: TransaksiEdit, db: Client = Depends
 
 
 @router.post("/by-invoice/{no_invoice}/cancel")
-def hapus_transaksi(no_invoice: str, db: Client = Depends(get_db)):
+def hapus_transaksi(
+    no_invoice: str,
+    db: Client = Depends(get_db),
+    _: dict = Depends(require_roles("admin")),
+):
     """Transaksi tidak dihapus permanen, hanya ditandai 'dibatalkan' + stok dikembalikan."""
     trx = db.table("transactions").select("*").eq("no_invoice", no_invoice).execute().data
     if not trx:

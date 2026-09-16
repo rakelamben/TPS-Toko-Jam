@@ -83,7 +83,7 @@ export default function AdminNewTransactionPage() {
           </div>
           <TransactionBuilder
             customerId={pembeli.customer_id}
-            adminId={admin.admin_id}
+            adminId={admin.personnel_id}
             onCreated={handleCreated}
           />
         </>

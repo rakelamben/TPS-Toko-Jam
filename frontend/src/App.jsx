@@ -13,7 +13,31 @@ import TransactionDetailPage from "./pages/TransactionDetailPage";
 import SummaryPage from "./pages/SummaryPage";
 import CustomerProductsPage from "./pages/CustomerProductsPage";
 import CustomerNewTransactionPage from "./pages/CustomerNewTransactionPage";
+import OfficePage from "./pages/OfficePage";
 import { useSession } from "./context/SessionContext";
+
+function CapabilityGate({ capability, children }) {
+  const { role, admin: personnel } = useSession();
+  const isOperationalStaff = role === "staff" && personnel?.role === "staf_operasional";
+  const isWarehouseStaff = role === "staff" && personnel?.role === "staf_gudang";
+  const allowed = capability === "office"
+    ? ["admin", "manager", "staff"].includes(role)
+    : capability === "inventory"
+    ? role === "admin" || isWarehouseStaff
+    : capability === "operator"
+      ? role === "admin" || isOperationalStaff
+      : role === "admin" || role === "manager" || isOperationalStaff;
+  return allowed ? children : <Navigate to="/admin/office" replace />;
+}
+
+function PersonnelTransactionDetail() {
+  const { role } = useSession();
+  return (
+    <CapabilityGate capability="viewer">
+      <TransactionDetailPage canManage={role === "admin"} backPath="/admin/transactions" />
+    </CapabilityGate>
+  );
+}
 
 export default function App() {
   return (
@@ -26,17 +50,18 @@ export default function App() {
 
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Navigate to="products" replace />} />
-            <Route path="products" element={<ProductsPage />} />
-            <Route path="transactions/new" element={<AdminNewTransactionPage />} />
+            <Route path="products" element={<CapabilityGate capability="inventory"><ProductsPage /></CapabilityGate>} />
+            <Route path="transactions/new" element={<CapabilityGate capability="operator"><AdminNewTransactionPage /></CapabilityGate>} />
             <Route
               path="transactions"
-              element={<TransactionsPage basePath="/admin/transactions" />}
+              element={<CapabilityGate capability="viewer"><TransactionsPage basePath="/admin/transactions" /></CapabilityGate>}
             />
             <Route
               path="transactions/:id"
-              element={<TransactionDetailPage canManage backPath="/admin/transactions" />}
+              element={<PersonnelTransactionDetail />}
             />
-            <Route path="summary" element={<SummaryPage />} />
+            <Route path="summary" element={<CapabilityGate capability="viewer"><SummaryPage /></CapabilityGate>} />
+            <Route path="office" element={<CapabilityGate capability="office"><OfficePage /></CapabilityGate>} />
           </Route>
 
           <Route path="/customer" element={<CustomerLayout />}>

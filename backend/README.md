@@ -39,12 +39,18 @@ source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 cp .env.example .env            # lalu isi SUPABASE_URL & SUPABASE_KEY di .env
+# isi juga JWT_SECRET dengan secret acak panjang untuk token login personel
 
 uvicorn app.main:app --reload
 ```
 
 Buka `http://127.0.0.1:8000/docs` — Swagger UI otomatis, semua endpoint bisa
 langsung dicoba dari sana (pengganti menu CLI kamu).
+
+Endpoint personel/OAS membutuhkan header `Authorization: Bearer <access_token>`.
+Token diterbitkan oleh `POST /auth/login` dan memiliki masa berlaku sesuai
+`JWT_EXPIRE_MINUTES`. Role `admin`, `manager`, dan `staff` diperiksa di backend;
+pembatasan menu frontend bukan satu-satunya lapisan keamanan.
 
 ## Ringkasan endpoint (vs menu CLI lama)
 
