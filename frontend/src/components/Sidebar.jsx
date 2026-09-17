@@ -4,8 +4,7 @@ import { useSession } from "../context/SessionContext";
 
 export default function Sidebar({ items }) {
   const { role, admin, customer, logout } = useSession();
-  const isPersonnel = ["admin", "manager", "staff"].includes(role);
-  const who = isPersonnel ? admin?.nama : customer?.nama;
+  const who = role === "admin" ? admin?.nama : customer?.nama;
 
   return (
     <aside className="sidebar no-print">
@@ -24,7 +23,7 @@ export default function Sidebar({ items }) {
       </nav>
       <div className="sidebar-footer">
         <div className="who">
-          {isPersonnel ? role[0].toUpperCase() + role.slice(1) : "Pembeli"} · {who}
+          {role === "admin" ? "Admin" : "Pembeli"} · {who}
         </div>
         <button className="ghost" style={{ width: "100%", color: "var(--parchment)" }} onClick={logout}>
           Keluar

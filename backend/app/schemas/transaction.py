@@ -9,7 +9,7 @@ class KeranjangItem(BaseModel):
 
 class TransaksiCreate(BaseModel):
     customer_id: str
-    personnel_id: Optional[str] = None  # id dari tabel personnel (admin/staff kasir); None = transaksi mandiri oleh pembeli
+    admin_id: Optional[str] = None  # None = pembeli transaksi mandiri
     items: list[KeranjangItem]
 
 

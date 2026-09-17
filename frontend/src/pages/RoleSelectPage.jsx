@@ -10,8 +10,8 @@ export default function RoleSelectPage() {
         <h1 style={{ fontSize: 20 }}>Masuk sebagai</h1>
         <div className="role-choice">
           <button onClick={() => navigate("/admin/login")}>
-            <span className="title">Personel toko</span>
-            <span className="desc">Login sebagai admin, manager, atau staff untuk mengelola toko.</span>
+            <span className="title">Admin</span>
+            <span className="desc">Kelola barang, transaksi, dan lihat ringkasan penjualan.</span>
           </button>
           <button onClick={() => navigate("/customer/identify")}>
             <span className="title">Pembeli</span>

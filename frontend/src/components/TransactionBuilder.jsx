@@ -63,7 +63,7 @@ export default function TransactionBuilder({ customerId, adminId = null, onCreat
     try {
       const payload = {
         customer_id: customerId,
-        personnel_id: adminId,
+        admin_id: adminId,
         items: cart.map((i) => ({ product_id: i.product_id, qty: i.qty })),
       };
       const invoice = await createTransaction(payload);

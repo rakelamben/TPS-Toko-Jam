@@ -8,7 +8,6 @@ from supabase import Client
 
 from app.database import get_db
 from app.schemas.product import ProductCreate, ProductUpdate, ProductOut
-from app.utils.auth import require_inventory_operator
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -32,11 +31,7 @@ def detail_barang(product_id: str, db: Client = Depends(get_db)):
 
 
 @router.post("", response_model=ProductOut, status_code=201)
-def input_barang(
-    payload: ProductCreate,
-    db: Client = Depends(get_db),
-    _: dict = Depends(require_inventory_operator),
-):
+def input_barang(payload: ProductCreate, db: Client = Depends(get_db)):
     res = db.table("products").insert(payload.model_dump()).execute()
     if not res.data:
         raise HTTPException(status_code=400, detail="Gagal menambahkan barang")
@@ -44,12 +39,7 @@ def input_barang(
 
 
 @router.patch("/{product_id}", response_model=ProductOut)
-def edit_barang(
-    product_id: str,
-    payload: ProductUpdate,
-    db: Client = Depends(get_db),
-    _: dict = Depends(require_inventory_operator),
-):
+def edit_barang(product_id: str, payload: ProductUpdate, db: Client = Depends(get_db)):
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="Tidak ada field yang diubah")
@@ -61,11 +51,7 @@ def edit_barang(
 
 
 @router.delete("/{product_id}", status_code=204)
-def hapus_barang(
-    product_id: str,
-    db: Client = Depends(get_db),
-    _: dict = Depends(require_inventory_operator),
-):
+def hapus_barang(product_id: str, db: Client = Depends(get_db)):
     try:
         db.table("products").delete().eq("product_id", product_id).execute()
     except Exception as e:
