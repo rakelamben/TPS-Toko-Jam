@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { getInbox, listNotifications, listWorkflowRequests } from "../api/client";
 
 const SessionContext = createContext(null);
 
@@ -14,6 +15,51 @@ export function SessionProvider({ children }) {
     const raw = localStorage.getItem("tps_customer");
     return raw ? JSON.parse(raw) : null;
   });
+  const [badges, setBadges] = useState({ messages: 0, notifications: 0, workflow: 0 });
+
+  const refreshBadges = useCallback(async () => {
+    if (!admin?.personnel_id) return;
+    try {
+      const isManagerOrAdmin = ["admin", "manager"].includes(role);
+      const isWarehouse = admin?.role === "staf_gudang";
+      const isOperational = admin?.role === "staf_operasional";
+
+      const promises = [
+        getInbox(admin.personnel_id).catch(() => []),
+      ];
+
+      if (isManagerOrAdmin || isWarehouse || isOperational) {
+        promises.push(listNotifications(admin.personnel_id).catch(() => []));
+      } else {
+        promises.push(Promise.resolve([]));
+      }
+
+      if (isManagerOrAdmin) {
+        promises.push(listWorkflowRequests({ status: "pending" }).catch(() => []));
+      } else {
+        promises.push(Promise.resolve([]));
+      }
+
+      const [inboxRes, notifRes, wfRes] = await Promise.all(promises);
+      const unreadMsgs = Array.isArray(inboxRes) ? inboxRes.filter((m) => !m.is_read).length : 0;
+      const unreadNotifs = Array.isArray(notifRes) ? notifRes.filter((n) => !n.is_read).length : 0;
+      const pendingWf = Array.isArray(wfRes) ? wfRes.filter((w) => w.current_status === "pending").length : 0;
+
+      setBadges({ messages: unreadMsgs, notifications: unreadNotifs, workflow: pendingWf });
+    } catch {
+      // ignore
+    }
+  }, [admin?.personnel_id, role, admin?.role]);
+
+  useEffect(() => {
+    if (!admin?.personnel_id) {
+      setBadges({ messages: 0, notifications: 0, workflow: 0 });
+      return;
+    }
+    refreshBadges();
+    const timer = setInterval(refreshBadges, 40000);
+    return () => clearInterval(timer);
+  }, [admin?.personnel_id, refreshBadges]);
 
   useEffect(() => {
     if (role) localStorage.setItem("tps_role", role);
@@ -60,7 +106,18 @@ export function SessionProvider({ children }) {
 
   return (
     <SessionContext.Provider
-      value={{ role, admin, personnel: admin, customer, loginAsAdmin, loginAsPersonnel, loginAsCustomer, logout }}
+      value={{
+        role,
+        admin,
+        personnel: admin,
+        customer,
+        badges,
+        refreshBadges,
+        loginAsAdmin,
+        loginAsPersonnel,
+        loginAsCustomer,
+        logout,
+      }}
     >
       {children}
     </SessionContext.Provider>

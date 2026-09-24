@@ -135,10 +135,10 @@ def require_office_area(area: str) -> Callable:
     allowed = {
         "documents": {"admin", "manager", "staf_operasional"},
         "correspondence": {"admin", "manager", "staf_operasional"},
-        "workflow": {"admin", "manager", "staf_operasional"},
+        "workflow": {"admin", "manager", "staf_operasional", "staf_gudang"},
         "communication": {"admin", "manager", "staf_operasional", "staf_gudang"},
-        "shifts": {"admin", "manager", "staf_gudang"},
-        "notifications": {"admin", "manager", "staf_gudang"},
+        "shifts": {"admin", "manager", "staf_gudang", "staf_operasional"},
+        "notifications": {"admin", "manager", "staf_gudang", "staf_operasional"},
     }
 
     def dependency(personnel: dict = Depends(get_current_personnel)) -> dict:

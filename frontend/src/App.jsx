@@ -60,8 +60,8 @@ export default function App() {
               path="transactions/:id"
               element={<PersonnelTransactionDetail />}
             />
-            <Route path="summary" element={<CapabilityGate capability="viewer"><SummaryPage /></CapabilityGate>} />
-            <Route path="office" element={<CapabilityGate capability="office"><OfficePage /></CapabilityGate>} />
+            <Route path="office" element={<CapabilityGate capability="office"><Navigate to="/admin/office/communication" replace /></CapabilityGate>} />
+            <Route path="office/:tab" element={<CapabilityGate capability="office"><OfficePage /></CapabilityGate>} />
           </Route>
 
           <Route path="/customer" element={<CustomerLayout />}>
